@@ -75,15 +75,16 @@ class ChainsResponse(BaseModel):
 # App
 # -----------------------------------------------------------------------------
 
-app = FastAPI(title="RugRadar API")
+from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://rugradar-frontend.onrender.com"],
+    allow_origins=["https://rugradar-1.onrender.com"],  # your frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.get("/health")
 def health():
