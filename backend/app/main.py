@@ -84,6 +84,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/analyze")
+async def analyze(
+    address: str = Query(..., description="Wallet address"),
+    chain: str = Query(..., description="Blockchain name (e.g., solana, ethereum)")
+):
+    try:
+        # Replace this with your actual logic
+        result = {"tokens": ["token1", "token2"], "chain": chain, "address": address}
+        return {"result": result}
+    except Exception as e:
+        print(f"Error in /analyze: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/health")
 def health():
