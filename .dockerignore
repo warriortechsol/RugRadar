@@ -1,16 +1,11 @@
-# Ignore local dev cruft
-**/__pycache__/
-**/*.pyc
-**/*.pyo
-node_modules
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
 .env
 .env.*
-.git
-.gitignore
-.vscode
-.idea
-
-# Ignore build outputs
-frontend/dist
-backend/__pycache__/
+*.db
+*.sqlite3
+# Remove any broad 'backend' ignore rule to ensure files are copied
 
