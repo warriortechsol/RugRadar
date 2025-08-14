@@ -1,0 +1,24 @@
+# Python defaults
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+*.log
+
+# Build artifacts
+build/
+dist/
+
+# Virtualenv
+.env
+venv/
+.env.local
+Pipfile.lock
+
+# OS & editor files
+.DS_Store
+*.swp
+.idea/
+.vscode/
+

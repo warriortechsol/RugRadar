@@ -1,0 +1,26 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Package & build artifacts
+*.egg-info/
+*.log
+build/
+dist/
+*.sqlite3
+
+# Git + OS
+.git
+.gitignore
+.DS_Store
+
+# Virtual environments
+.env
+.env.local
+venv/
+Pipfile.lock
+
+# IDE/editor folders
+.vscode/
+.idea/
+

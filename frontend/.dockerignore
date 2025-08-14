@@ -1,0 +1,20 @@
+# Node/Vite artifacts
+node_modules
+dist
+.vite
+*.log
+
+# Git + OS
+.git
+.gitignore
+.DS_Store
+
+# Env/config files
+.env
+.env.local
+*.swp
+
+# IDE/editor folders
+.vscode/
+.idea/
+

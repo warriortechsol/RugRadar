@@ -1,0 +1,16 @@
+# Node + Vite defaults
+node_modules/
+dist/
+.vite/
+*.log
+
+# IDE & OS artifacts
+.DS_Store
+*.swp
+.env
+.env.local
+
+# Misc
+package-lock.json
+coverage/
+
