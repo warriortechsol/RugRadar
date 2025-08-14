@@ -21,7 +21,7 @@ type TraceResult = {
 type AnalyzeResult = {
   address: string;
   chain: string;
-  metadata: {
+  metadata?: {
     mint: string;
     owner?: string | null;
     token_amount?: number | null;
@@ -127,17 +127,26 @@ export default function App() {
         </div>
       )}
 
-      {analyze && (
+      {analyze?.metadata && (
         <div className="card">
           <h3 style={{ marginTop: 0, marginBottom: 12 }}>Analysis</h3>
           <div className="row" style={{ gap: 12, alignItems: "center" }}>
             {analyze.metadata.logo_uri ? (
-              <img src={analyze.metadata.logo_uri} width={28} height={28} style={{ borderRadius: 8 }} />
+              <img
+                src={analyze.metadata.logo_uri}
+                alt={analyze.metadata.symbol || "Token"}
+                width={28}
+                height={28}
+                style={{ borderRadius: 8 }}
+              />
             ) : (
               <div style={{ width: 28, height: 28, background: "#1b2634", borderRadius: 8 }} />
             )}
             <div>
-              <div><strong>{analyze.metadata.symbol || "Token"}</strong> — {analyze.metadata.name || analyze.metadata.mint}</div>
+              <div>
+                <strong>{analyze.metadata.symbol || "Token"}</strong> —{" "}
+                {analyze.metadata.name || analyze.metadata.mint}
+              </div>
               <div style={{ opacity: 0.7, fontSize: 12 }}>
                 Supply: {analyze.metadata.supply ?? "—"} • Decimals: {analyze.metadata.decimals ?? "—"}
               </div>
