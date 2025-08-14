@@ -79,9 +79,7 @@ app = FastAPI(title="RugRadar API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://rugradar-frontend.onrender.com"
-    ],
+    allow_origins=["https://rugradar-frontend.onrender.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
