@@ -1,7 +1,8 @@
 services:
   backend:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     image: rugradar-backend
     container_name: rugradar-backend
     env_file:
@@ -23,13 +24,14 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
     image: rugradar-frontend
     container_name: rugradar-frontend
     env_file:
       - ./.env
     ports:
-      - "3000:80"   # Fixed: Host port 3000 → container’s 80
+      - "3000:80"
     restart: unless-stopped
     depends_on:
       backend:
@@ -62,4 +64,3 @@ networks:
 
 volumes:
   db_data:
-

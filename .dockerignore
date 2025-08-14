@@ -1,0 +1,16 @@
+# Ignore local dev cruft
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+node_modules
+.env
+.env.*
+.git
+.gitignore
+.vscode
+.idea
+
+# Ignore build outputs
+frontend/dist
+backend/__pycache__/
+

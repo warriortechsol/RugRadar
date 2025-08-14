@@ -1,18 +1,18 @@
-FROM node:20-alpine AS builder
+FROM node:20-alpine AS build
 WORKDIR /app
 
-# Copy only frontend package manifests first (better layer caching)
+# Copy dependency manifests first
 COPY frontend/package*.json ./
-
-# Install deps
 RUN npm ci
 
-# Copy rest of the frontend files
+# Copy the rest of the frontend source
 COPY frontend/. .
 
-# Build
+# Build production assets
 RUN npm run build
 
-# Serve via nginx
+# Production stage
 FROM nginx:1.27-alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
