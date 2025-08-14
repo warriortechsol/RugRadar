@@ -1,26 +1,10 @@
-# Python bytecode
 __pycache__/
-*.py[cod]
-
-# Package & build artifacts
-*.egg-info/
-*.log
-build/
-dist/
-*.sqlite3
-
-# Git + OS
-.git
-.gitignore
-.DS_Store
-
-# Virtual environments
+*.pyc
+*.pyo
+*.pyd
+.Python
 .env
-.env.local
-venv/
-Pipfile.lock
-
-# IDE/editor folders
-.vscode/
-.idea/
+.env.*
+*.db
+*.sqlite3
 

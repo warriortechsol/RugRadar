@@ -1,18 +1,20 @@
 services:
-  - name: rugradar-backend
-    type: web
-    repo: https://github.com/warriortechsol/RugRadar
+  - type: web
+    name: rugradar-backend
     env: docker
-    plan: starter
-    branch: main
+    dockerfilePath: backend/Dockerfile
+    rootDir: backend
+    plan: free
     autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8000
 
-  - name: rugradar-dashboard
-    type: web
-    repo: https://github.com/warriortechsol/RugRadar
+  - type: web
+    name: rugradar-frontend
     env: docker
-    plan: starter
-    branch: main
-    autoDeploy: true
+    dockerfilePath: frontend/Dockerfile
     rootDir: frontend
+    plan: free
+    autoDeploy: true
 
