@@ -1,15 +1,18 @@
-# Build phase
-FROM node:20.12-alpine AS builder
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci   # <— no --omit=dev so Vite is available during build
+# Copy only frontend package manifests first (better layer caching)
+COPY frontend/package*.json ./
 
-COPY . .
+# Install deps
+RUN npm ci
+
+# Copy rest of the frontend files
+COPY frontend/. .
+
+# Build
 RUN npm run build
 
-# Serve phase
+# Serve via nginx
 FROM nginx:1.27-alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
