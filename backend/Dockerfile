@@ -1,24 +1,25 @@
 # backend/Dockerfile
+
 FROM python:3.11-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app
-
+# Set working directory
 WORKDIR /app
 
+# Install system deps
+RUN apt-get update && apt-get install -y build-essential curl && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy app code
 COPY . .
 
+# Expose port for FastAPI
 EXPOSE 8000
-# Try app.main:app first (package layout), then main:app (flat layout)
-CMD ["/bin/sh", "-lc", "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 || python -m uvicorn main:app --host 0.0.0.0 --port 8000"]
 
-
-
+# Entrypoint
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 
 
