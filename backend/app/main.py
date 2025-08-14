@@ -75,7 +75,6 @@ class ChainsResponse(BaseModel):
 # App
 # -----------------------------------------------------------------------------
 
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
