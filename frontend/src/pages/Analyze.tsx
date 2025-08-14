@@ -9,7 +9,7 @@ const Analyze = () => {
   const handleAnalyze = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/analyze?address=${address}&chain=solana`);
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}analyze?address=${address}&chain=solana`);
       const { result } = await res.json();
       setTokens(result || []);
     } catch (err) {
