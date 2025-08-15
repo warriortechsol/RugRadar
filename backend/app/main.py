@@ -982,8 +982,10 @@ async def analyze(
 ) -> AnalyzeResult:
     addr_s = sanitize_address(address or wallet or mint or "")
     chain_s = (chain or "").strip().lower()
+    
     if not addr_s:
         raise HTTPException(status_code=422, detail="Query param 'wallet' or 'address' is required")
+    
     try:
         if chain_s == "solana":
             if not is_solana_address(addr_s):
@@ -991,19 +993,25 @@ async def analyze(
             raw = await sol_analyze_mint(addr_s)
             return normalize_analyze_result(raw, addr_s, chain_s)  # type: ignore[return-value]
 
-        if chain_s == "ethereum":
+        elif chain_s == "ethereum":
             if not is_eth_address(addr_s):
                 raise HTTPException(status_code=422, detail="Invalid Ethereum contract/address")
             raw = await eth_analyze_token(addr_s)
             return normalize_analyze_result(raw, addr_s, chain_s)  # type: ignore[return-value]
 
-        raise HTTPException(status_code=400, detail="Unsupported chain. Try chain=solana or chain=ethereum")
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported chain. Try chain=solana or chain=ethereum"
+            )
+
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Upstream error: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analyze failure: {str(e)}")
+
 
 # -----------------------------------------------------------------------------
 # Optional: run with uvicorn if executed directly
