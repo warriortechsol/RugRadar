@@ -975,11 +975,12 @@ async def trace(
 
 @app.get("/analyze", response_model=AnalyzeResult)
 async def analyze(
-    address: Optional[str] = Query(default=None, alias="wallet", description="Wallet or token/contract address"),
-    wallet: Optional[str] = Query(default=None, description="Alias for address"),
+    address: Optional[str] = Query(None, description="Wallet or token/contract address"),
+    wallet: Optional[str] = Query(None, description="Alias for address"),
+    mint: Optional[str] = Query(None, description="Alias for token/mint"),
     chain: str = Query(..., description="Chain name: solana or ethereum"),
 ) -> AnalyzeResult:
-    addr_s = sanitize_address(address or wallet or "")
+    addr_s = sanitize_address(address or wallet or mint or "")
     chain_s = (chain or "").strip().lower()
     if not addr_s:
         raise HTTPException(status_code=422, detail="Query param 'wallet' or 'address' is required")
