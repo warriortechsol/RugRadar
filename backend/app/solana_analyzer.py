@@ -8,14 +8,13 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-
-# -----------------------------------------------------------------------------
-# Load env + validate settings BEFORE reading os.getenv(...)
-# -----------------------------------------------------------------------------
 from dotenv import load_dotenv
-load_dotenv()
 
-from app.config import validate_settings  # if you created config.py as we discussed
+# -----------------------------------------------------------------------------
+# Load env + validate settings
+# -----------------------------------------------------------------------------
+load_dotenv()
+from app.config import validate_settings
 validate_settings()
 
 # -----------------------------------------------------------------------------
@@ -38,6 +37,12 @@ SOLSCAN_API_TOKEN = os.getenv("SOLSCAN_API_TOKEN", "").strip()
 
 CORS_ALLOW_ORIGINS = [o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "*").split(",")]
 
+# -----------------------------------------------------------------------------
+# Constants
+# -----------------------------------------------------------------------------
+SAFE_LOGO = "/placeholder.png"  # frontend-served placeholder asset
+TRANSIENT_STATUS = {429, 500, 502, 503, 504}
+JSONRPC_RATE_LIMIT_CODES = {-32005, -32011}
 
 # -----------------------------------------------------------------------------
 # Models
@@ -83,7 +88,6 @@ class ChainsResponse(BaseModel):
 # App
 # -----------------------------------------------------------------------------
 app = FastAPI(title="RugRadar API")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ALLOW_ORIGINS if CORS_ALLOW_ORIGINS != ["*"] else ["*"],
@@ -117,12 +121,9 @@ def _fill_metadata_defaults(h: TokenHolding) -> None:
         h.symbol = _sym_from_mint(h.mint)
     if not h.name or not str(h.name).strip():
         h.name = h.symbol
-
 # -----------------------------------------------------------------------------
 # HTTP client
 # -----------------------------------------------------------------------------
-TRANSIENT_STATUS = {500, 502, 503, 504}
-
 async def http_post_json(url: Union[str, List[str]], json: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     urls = [url] if isinstance(url, str) else list(url)
     delay = RETRY_BASE_DELAY_MS / 1000.0
@@ -158,35 +159,34 @@ async def http_get_json(url: str, headers: Optional[Dict[str, str]] = None, para
                 raise
         await asyncio.sleep(delay + random.uniform(0, delay * 0.25))
         delay *= 2
-        
-        
-        
+
 # -----------------------------------------------------------------------------
 # Solana JSON-RPC helper
 # -----------------------------------------------------------------------------
-TRANSIENT_STATUS = {429, 500, 502, 503, 504}
-JSONRPC_RATE_LIMIT_CODES = {-32005, -32011}  # common provider "too many requests" codes
-
-# Optional: bound concurrent RPCs to avoid bursts
 _SOL_RPC_CONCURRENCY = int(os.getenv("SOL_RPC_CONCURRENCY", "8"))
 _sol_rpc_sem = asyncio.Semaphore(_SOL_RPC_CONCURRENCY)
+
+def _prioritize_rpc(rpc_list: List[str]) -> List[str]:
+    preferred = os.getenv("PREFERRED_SOLANA_RPC", "").strip()
+    if preferred and preferred in rpc_list:
+        rpc_list.remove(preferred)
+        rpc_list.insert(0, preferred)
+    return rpc_list
 
 async def _retry_after_delay(headers: dict, default: float) -> float:
     ra = headers.get("retry-after")
     if not ra:
         return default
     try:
-        # Numeric seconds is common; RFC 7231 date is rarer—ignore for simplicity
         return max(default, float(ra))
     except ValueError:
         return default
 
 async def sol_rpc(method: str, params: list) -> dict:
-    rpc_list = [u.strip() for u in SOLANA_RPC_URLS if u.strip()]  # ensure non-empty
+    rpc_list = _prioritize_rpc([u.strip() for u in SOLANA_RPC_URLS if u.strip()])
     if not rpc_list:
         raise HTTPException(status_code=500, detail="No SOLANA_RPC_URLS configured")
-    rpc_list = rpc_list[:]  # copy
-    random.shuffle(rpc_list)
+    random.shuffle(rpc_list[1:] if len(rpc_list) > 1 else rpc_list)
 
     payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
     delay = RETRY_BASE_DELAY_MS / 1000.0
@@ -194,17 +194,15 @@ async def sol_rpc(method: str, params: list) -> dict:
     for attempt in range(1, RETRY_MAX_ATTEMPTS + 1):
         rpc_url = rpc_list[(attempt - 1) % len(rpc_list)]
         try:
-            async with _sol_rpc_sem:  # throttle bursts
+            async with _sol_rpc_sem:
                 async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
                     r = await client.post(rpc_url, json=payload, headers={"Content-Type": "application/json"})
             if r.status_code in TRANSIENT_STATUS:
-                # Respect provider guidance
                 backoff = await _retry_after_delay(r.headers, default=0.75)
                 if r.status_code == 429:
                     await asyncio.sleep(backoff)
-                continue  # try next attempt / next RPC
+                continue
             r.raise_for_status()
-
             data = r.json()
             if isinstance(data, dict) and "error" in data:
                 code = data["error"].get("code")
@@ -212,17 +210,13 @@ async def sol_rpc(method: str, params: list) -> dict:
                     await asyncio.sleep(0.75)
                     continue
             return data
-
         except httpx.RequestError:
-            # network fail, try next
             pass
-
         await asyncio.sleep(delay + random.uniform(0, delay * 0.25))
         delay = min(delay * 2, 8.0)
 
     raise HTTPException(status_code=502, detail=f"All Solana RPC endpoints failed for {method}")
 
-        
 # -----------------------------------------------------------------------------
 # Solana trace + analyze
 # -----------------------------------------------------------------------------
@@ -258,12 +252,12 @@ async def sol_trace_wallet(wallet: str) -> List[TokenHolding]:
         _fill_metadata_defaults(h)
     holdings.sort(key=lambda x: x.ui_amount, reverse=True)
     return holdings
-
 async def sol_enrich_metadata(holdings: List[TokenHolding]) -> None:
     if not holdings or not SOLSCAN_API_TOKEN:
         return
     headers = {"token": SOLSCAN_API_TOKEN}
     sem = asyncio.Semaphore(8)
+
     async def fetch_one(h: TokenHolding):
         url = f"https://pro-api.solscan.io/v2.0/token/meta?tokenAddress={h.mint}"
         try:
@@ -275,6 +269,7 @@ async def sol_enrich_metadata(holdings: List[TokenHolding]) -> None:
             h.logo_uri = v.get("icon") or h.logo_uri
         except Exception:
             pass
+
     await asyncio.gather(*(fetch_one(h) for h in holdings))
 
 async def sol_analyze_mint(mint: str) -> AnalyzeResult:
@@ -306,7 +301,6 @@ async def sol_analyze_mint(mint: str) -> AnalyzeResult:
     penalty = int(min(100, round(pct * 100)))
     score = max(0, 100 - penalty)
 
-    # Hardened metadata retrieval
     name = symbol = logo = None
     if SOLSCAN_API_TOKEN:
         try:
@@ -314,21 +308,19 @@ async def sol_analyze_mint(mint: str) -> AnalyzeResult:
                 f"https://pro-api.solscan.io/v2.0/token/meta?tokenAddress={mint}",
                 headers={"token": SOLSCAN_API_TOKEN},
             )
-            print("DEBUG: Solscan meta", meta)  # Remove when confirmed working
             mv = meta.get("data") or {}
             name = (mv.get("name") or "").strip() or name
             symbol = (mv.get("symbol") or "").strip() or symbol
             logo = (mv.get("icon") or "").strip() or logo
-        except Exception as e:
-            print("DEBUG: Solscan fetch error", e)
+        except Exception:
+            pass
 
-    # Fill missing fields with safe fallbacks
     if not symbol:
         symbol = _sym_from_mint(mint)
     if not name:
         name = symbol
     if not logo:
-        logo = "https://yourcdn.example.com/placeholder.png"  # Optional default
+        logo = SAFE_LOGO  # <-- safe, resolvable placeholder
 
     metadata = Metadata(
         mint=mint,
@@ -343,72 +335,54 @@ async def sol_analyze_mint(mint: str) -> AnalyzeResult:
     risk = RiskScore(score=score, reasons=reasons)
     return AnalyzeResult(address=mint, chain="solana", metadata=metadata, risk_score=risk)
 
-
-
 # -----------------------------------------------------------------------------
-# Ethereum trace + enriched analyze
+# Ethereum analyze (simplified error handling example)
 # -----------------------------------------------------------------------------
-async def eth_trace_wallet(wallet: str) -> List[TokenHolding]:
-    balances = await eth_get_token_balances(wallet)
-    out: List[TokenHolding] = []
-    for b in balances:
-        try:
-            contract = b.get("contractAddress")
-            bal_hex = b.get("tokenBalance")
-            amount_raw = _hex_to_int(bal_hex or "0x0")
-            if amount_raw == 0:
-                continue
-            meta = await eth_get_token_metadata(contract)
-            decimals = int(meta.get("decimals") or 0)
-            ui = amount_raw / (10 ** decimals) if decimals else float(amount_raw)
-            th = TokenHolding(mint=contract, amount=amount_raw, decimals=decimals, ui_amount=ui,
-                              name=meta.get("name"), symbol=meta.get("symbol"), logo_uri=meta.get("logo"))
-            _fill_metadata_defaults(th)
-            out.append(th)
-        except Exception:
-            continue
-    out.sort(key=lambda x: x.ui_amount, reverse=True)
-    return out
-
 async def eth_analyze_token(contract: str) -> AnalyzeResult:
-    meta = await eth_get_token_metadata(contract)
-    decimals_meta = int(meta.get("decimals") or 0)
-    name = meta.get("name")
-    symbol = meta.get("symbol")
-    logo = meta.get("logo")
-    total_supply, decimals_rpc, owner_addr = await eth_get_total_supply_and_owner(contract)
-    decimals = decimals_rpc if decimals_rpc is not None else decimals_meta
-    reasons: List[str] = []
-    score = 100
-    top_holders = await eth_get_top_holders(contract)
-    if total_supply and top_holders:
-        try:
-            total_supply_float = float(total_supply) / (10 ** (decimals or 0))
-        except Exception:
-            total_supply_float = None
-        if total_supply_float:
+    try:
+        meta = await eth_get_token_metadata(contract)
+        decimals_meta = int(meta.get("decimals") or 0)
+        name = meta.get("name")
+        symbol = meta.get("symbol")
+        logo = meta.get("logo")
+        total_supply, decimals_rpc, owner_addr = await eth_get_total_supply_and_owner(contract)
+        decimals = decimals_rpc if decimals_rpc is not None else decimals_meta
+        reasons: List[str] = []
+        score = 100
+        top_holders = await eth_get_top_holders(contract)
+        if total_supply and top_holders:
             try:
-                top_bal = float(top_holders[0].get("Quantity") or 0)
-                pct = top_bal / total_supply_float
-                if pct >= 0.5:
-                    reasons.append("Top holder controls ≥ 50% of supply")
-                elif pct >= 0.2:
-                    reasons.append("Top holder controls ≥ 20% of supply")
-                elif pct >= 0.1:
-                    reasons.append("Top holder controls ≥ 10% of supply")
-                penalty = int(min(100, round(pct * 100)))
-                score = max(0, 100 - penalty)
+                total_supply_float = float(total_supply) / (10 ** (decimals or 0))
+                if total_supply_float:
+                    top_bal = float(top_holders[0].get("Quantity") or 0)
+                    pct = top_bal / total_supply_float
+                    if pct >= 0.5:
+                        reasons.append("Top holder controls ≥ 50% of supply")
+                    elif pct >= 0.2:
+                        reasons.append("Top holder controls ≥ 20% of supply")
+                    elif pct >= 0.1:
+                        reasons.append("Top holder controls ≥ 10% of supply")
+                    penalty = int(min(100, round(pct * 100)))
+                    score = max(0, 100 - penalty)
             except Exception:
                 pass
-    if not symbol:
-        symbol = _sym_from_mint(contract)
-    if not name:
-        name = symbol
-    metadata = Metadata(mint=contract, owner=owner_addr, token_amount=None, decimals=decimals, supply=total_supply,
-                        name=name, symbol=symbol, logo_uri=logo)
-    risk = RiskScore(score=score if reasons else 60,
-                     reasons=reasons or ["Baseline score pending deeper holder analysis"])
-    return AnalyzeResult(address=contract, chain="ethereum", metadata=metadata, risk_score=risk)
+        if not symbol:
+            symbol = _sym_from_mint(contract)
+        if not name:
+            name = symbol
+        metadata = Metadata(
+            mint=contract, owner=owner_addr, token_amount=None, decimals=decimals,
+            supply=total_supply, name=name, symbol=symbol, logo_uri=logo
+        )
+        risk = RiskScore(score=score if reasons else 60,
+                         reasons=reasons or ["Baseline score pending deeper holder analysis"])
+        return AnalyzeResult(address=contract, chain="ethereum", metadata=metadata, risk_score=risk)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Ethereum RPC unavailable")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Analyze failure: unexpected error")
 
 # -----------------------------------------------------------------------------
 # Routes
@@ -434,7 +408,7 @@ async def trace(wallet: str = Query(...), chain: str = Query(...)) -> TraceResul
             if not is_eth_address(wallet_s):
                 raise HTTPException(status_code=422, detail="Invalid Ethereum address")
             tokens = await eth_trace_wallet(wallet_s)
-                        return TraceResult(wallet=wallet_s, chain=chain_s, tokens=tokens)
+            return TraceResult(wallet=wallet_s, chain=chain_s, tokens=tokens)
         else:
             raise HTTPException(status_code=400, detail="Unsupported chain. Try chain=solana or chain=ethereum")
     except httpx.HTTPError as e:
