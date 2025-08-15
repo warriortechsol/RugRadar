@@ -165,36 +165,63 @@ async def http_get_json(url: str, headers: Optional[Dict[str, str]] = None, para
 # Solana JSON-RPC helper
 # -----------------------------------------------------------------------------
 TRANSIENT_STATUS = {429, 500, 502, 503, 504}
+JSONRPC_RATE_LIMIT_CODES = {-32005, -32011}  # common provider "too many requests" codes
+
+# Optional: bound concurrent RPCs to avoid bursts
+_SOL_RPC_CONCURRENCY = int(os.getenv("SOL_RPC_CONCURRENCY", "8"))
+_sol_rpc_sem = asyncio.Semaphore(_SOL_RPC_CONCURRENCY)
+
+async def _retry_after_delay(headers: dict, default: float) -> float:
+    ra = headers.get("retry-after")
+    if not ra:
+        return default
+    try:
+        # Numeric seconds is common; RFC 7231 date is rarer—ignore for simplicity
+        return max(default, float(ra))
+    except ValueError:
+        return default
 
 async def sol_rpc(method: str, params: list) -> dict:
-    """
-    Calls Solana RPC with randomized endpoint order per attempt.
-    Treats 429 as transient (short backoff + hop to next RPC).
-    """
-    rpc_list = SOLANA_RPC_URLS[:]  # shallow copy of your list from env
+    rpc_list = [u.strip() for u in SOLANA_RPC_URLS if u.strip()]  # ensure non-empty
+    if not rpc_list:
+        raise HTTPException(status_code=500, detail="No SOLANA_RPC_URLS configured")
+    rpc_list = rpc_list[:]  # copy
     random.shuffle(rpc_list)
-    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
 
+    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
     delay = RETRY_BASE_DELAY_MS / 1000.0
 
     for attempt in range(1, RETRY_MAX_ATTEMPTS + 1):
         rpc_url = rpc_list[(attempt - 1) % len(rpc_list)]
         try:
-            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-                r = await client.post(rpc_url, json=payload)
-                if r.status_code in TRANSIENT_STATUS:
-                    if r.status_code == 429:
-                        await asyncio.sleep(0.5)  # brief backoff
-                    continue  # try next RPC in list / next attempt
-                r.raise_for_status()
-                return r.json()
+            async with _sol_rpc_sem:  # throttle bursts
+                async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
+                    r = await client.post(rpc_url, json=payload, headers={"Content-Type": "application/json"})
+            if r.status_code in TRANSIENT_STATUS:
+                # Respect provider guidance
+                backoff = await _retry_after_delay(r.headers, default=0.75)
+                if r.status_code == 429:
+                    await asyncio.sleep(backoff)
+                continue  # try next attempt / next RPC
+            r.raise_for_status()
+
+            data = r.json()
+            if isinstance(data, dict) and "error" in data:
+                code = data["error"].get("code")
+                if code in JSONRPC_RATE_LIMIT_CODES:
+                    await asyncio.sleep(0.75)
+                    continue
+            return data
+
         except httpx.RequestError:
             # network fail, try next
             pass
+
         await asyncio.sleep(delay + random.uniform(0, delay * 0.25))
-        delay *= 2
+        delay = min(delay * 2, 8.0)
 
     raise HTTPException(status_code=502, detail=f"All Solana RPC endpoints failed for {method}")
+
         
 # -----------------------------------------------------------------------------
 # Solana trace + analyze
