@@ -10,6 +10,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # -----------------------------------------------------------------------------
+# Load env + validate settings BEFORE reading os.getenv(...)
+# -----------------------------------------------------------------------------
+from dotenv import load_dotenv
+load_dotenv()
+
+from app.config import validate_settings  # if you created config.py as we discussed
+validate_settings()
+
+# -----------------------------------------------------------------------------
 # Config
 # -----------------------------------------------------------------------------
 PORT = int(os.getenv("PORT", "8000"))
@@ -28,6 +37,7 @@ SOLANA_RPC_URLS = [
 SOLSCAN_API_TOKEN = os.getenv("SOLSCAN_API_TOKEN", "").strip()
 
 CORS_ALLOW_ORIGINS = [o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "*").split(",")]
+
 
 # -----------------------------------------------------------------------------
 # Models

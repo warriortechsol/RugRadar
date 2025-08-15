@@ -1,22 +1,18 @@
-# backend/app/main.py
-
 import os
-import re
 import random
+import re
 import asyncio
 from typing import Any, Dict, List, Optional, Union, Tuple
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.encoders import jsonable_encoder   # <-- ADD THIS LINE
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# -----------------------------------------------------------------------------
+# Load .env BEFORE reading any environment variables
+# -----------------------------------------------------------------------------
 from dotenv import load_dotenv
-
-
-# -----------------------------------------------------------------------------
-# Load environment
-# -----------------------------------------------------------------------------
 load_dotenv()
 
 # -----------------------------------------------------------------------------
@@ -86,7 +82,7 @@ app = FastAPI(title="RugRadar API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ALLOW_ORIGINS if CORS_ALLOW_ORIGINS else ["*"],
+    allow_origins=CORS_ALLOW_ORIGINS if CORS_ALLOW_ORIGINS != ["*"] else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
