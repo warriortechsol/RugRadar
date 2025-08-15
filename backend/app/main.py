@@ -8,7 +8,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-
+from app.solana_analyzer import SOLANA_RPC_URLS
 # -----------------------------------------------------------------------------
 # Load .env BEFORE reading any environment variables
 # -----------------------------------------------------------------------------
@@ -28,9 +28,13 @@ ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY", "").strip()
 
 SOLANA_RPC_URLS = [
     url.strip()
-    for url in os.getenv("SOLANA_RPC_URLS", "https://api.mainnet-beta.solana.com").split(",")
+    for url in os.getenv(
+        "SOLANA_RPC_URLS",
+        "https://api.mainnet-beta.solana.com"
+    ).split(",")
     if url.strip()
 ]
+
 SOLSCAN_API_TOKEN = os.getenv("SOLSCAN_API_TOKEN", "").strip()
 
 CORS_ALLOW_ORIGINS = [o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "*").split(",")]

@@ -47,3 +47,4 @@ htmlcov/
 .jest/
 coverage/
 
+.env
