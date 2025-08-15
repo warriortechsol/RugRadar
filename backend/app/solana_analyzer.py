@@ -207,18 +207,21 @@ async def sol_analyze_mint(mint: str) -> AnalyzeResult:
     supply_val = (supply_data.get("result") or {}).get("value") or {}
     supply_amount_raw = int(supply_val.get("amount", "0"))
     decimals = int(supply_val.get("decimals", 0))
+
     largest_data = await sol_rpc("getTokenLargestAccounts", [mint, {"commitment": "finalized"}])
     largest = (largest_data.get("result") or {}).get("value") or []
     top_token_account = largest[0]["address"] if largest else None
     top_amount_raw = int(largest[0].get("amount", "0")) if largest else 0
+
     top_owner = None
     if top_token_account:
         acct_data = await sol_rpc("getAccountInfo", [top_token_account, {"encoding": "jsonParsed"}])
         parsed = (((acct_data.get("result") or {}).get("value") or {}).get("data") or {}).get("parsed") or {}
         info = parsed.get("info") or {}
         top_owner = info.get("owner")
+
     reasons: List[str] = []
-    pct = top_amount_raw / float(supply_amount_raw) if supply_amount_raw else 0
+    pct = top_amount_raw / float(supply_amount_raw) if supply_amount_raw else 0.0
     if pct >= 0.5:
         reasons.append("Top holder controls ≥ 50% of supply")
     elif pct >= 0.2:
@@ -227,23 +230,45 @@ async def sol_analyze_mint(mint: str) -> AnalyzeResult:
         reasons.append("Top holder controls ≥ 10% of supply")
     penalty = int(min(100, round(pct * 100)))
     score = max(0, 100 - penalty)
+
+    # Hardened metadata retrieval
     name = symbol = logo = None
     if SOLSCAN_API_TOKEN:
         try:
-            meta = await http_get_json(f"https://pro-api.solscan.io/v2.0/token/meta?tokenAddress={mint}",
-                                       headers={"token": SOLSCAN_API_TOKEN})
+            meta = await http_get_json(
+                f"https://pro-api.solscan.io/v2.0/token/meta?tokenAddress={mint}",
+                headers={"token": SOLSCAN_API_TOKEN},
+            )
+            print("DEBUG: Solscan meta", meta)  # Remove when confirmed working
             mv = meta.get("data") or {}
-            name, symbol, logo = mv.get("name"), mv.get("symbol"), mv.get("icon")
-        except Exception:
-            pass
+            name = (mv.get("name") or "").strip() or name
+            symbol = (mv.get("symbol") or "").strip() or symbol
+            logo = (mv.get("icon") or "").strip() or logo
+        except Exception as e:
+            print("DEBUG: Solscan fetch error", e)
+
+    # Fill missing fields with safe fallbacks
     if not symbol:
         symbol = _sym_from_mint(mint)
     if not name:
         name = symbol
-    metadata = Metadata(mint=mint, owner=top_owner, token_amount=top_amount_raw, decimals=decimals,
-                        supply=supply_amount_raw, name=name, symbol=symbol, logo_uri=logo)
+    if not logo:
+        logo = "https://yourcdn.example.com/placeholder.png"  # Optional default
+
+    metadata = Metadata(
+        mint=mint,
+        owner=top_owner,
+        token_amount=top_amount_raw,
+        decimals=decimals,
+        supply=supply_amount_raw,
+        name=name,
+        symbol=symbol,
+        logo_uri=logo,
+    )
     risk = RiskScore(score=score, reasons=reasons)
     return AnalyzeResult(address=mint, chain="solana", metadata=metadata, risk_score=risk)
+
+
 
 # -----------------------------------------------------------------------------
 # Ethereum trace + enriched analyze

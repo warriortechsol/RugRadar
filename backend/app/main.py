@@ -8,9 +8,11 @@ from typing import Any, Dict, List, Optional, Union, Tuple
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.encoders import jsonable_encoder   # <-- ADD THIS LINE
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
 
 # -----------------------------------------------------------------------------
 # Load environment
@@ -213,26 +215,6 @@ async def sol_trace_wallet(wallet: str) -> List[TokenHolding]:
 # -----------------------------------------------------------------------------
 # Solana enrich + analyze
 # -----------------------------------------------------------------------------
-async def sol_enrich_metadata(holdings: List[TokenHolding]) -> None:
-    if not holdings or not SOLSCAN_API_TOKEN:
-        return
-    headers = {"token": SOLSCAN_API_TOKEN}
-    sem = asyncio.Semaphore(8)
-
-    async def fetch_one(h: TokenHolding):
-        url = f"https://pro-api.solscan.io/v2.0/token/meta?tokenAddress={h.mint}"
-        try:
-            async with sem:
-                data = await http_get_json(url, headers=headers)
-            v = data.get("data") or {}
-            h.name = v.get("name") or h.name
-            h.symbol = v.get("symbol") or h.symbol
-            h.logo_uri = v.get("icon") or h.logo_uri
-        except Exception:
-            pass
-
-    await asyncio.gather(*(fetch_one(h) for h in holdings))
-
 async def sol_analyze_mint(mint: str) -> AnalyzeResult:
     supply_data = await sol_rpc("getTokenSupply", [mint])
     supply_val = (supply_data.get("result") or {}).get("value") or {}
@@ -251,6 +233,7 @@ async def sol_analyze_mint(mint: str) -> AnalyzeResult:
         info = parsed.get("info") or {}
         top_owner = info.get("owner")
 
+    # Risk analysis
     reasons: List[str] = []
     pct = top_amount_raw / float(supply_amount_raw) if supply_amount_raw else 0.0
     if pct >= 0.5:
@@ -262,6 +245,7 @@ async def sol_analyze_mint(mint: str) -> AnalyzeResult:
     penalty = int(min(100, round(pct * 100)))
     score = max(0, 100 - penalty)
 
+    # Hardened single‑mint metadata fetch
     name = symbol = logo = None
     if SOLSCAN_API_TOKEN:
         try:
@@ -270,13 +254,18 @@ async def sol_analyze_mint(mint: str) -> AnalyzeResult:
                 headers={"token": SOLSCAN_API_TOKEN},
             )
             mv = meta.get("data") or {}
-            name, symbol, logo = mv.get("name"), mv.get("symbol"), mv.get("icon")
+            name = (mv.get("name") or "").strip() or name
+            symbol = (mv.get("symbol") or "").strip() or symbol
+            logo = (mv.get("icon") or "").strip() or logo
         except Exception:
             pass
+
     if not symbol:
         symbol = _sym_from_mint(mint)
     if not name:
         name = symbol
+    if not logo:
+        logo = "https://yourcdn.example.com/placeholder.png"
 
     metadata = Metadata(
         mint=mint,
@@ -480,6 +469,42 @@ async def trace(wallet: str = Query(..., description="Wallet address"), chain: s
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Trace failure: {str(e)}")
 
+def _to_dict(obj: Any) -> Dict[str, Any]:
+    if hasattr(obj, "dict"):
+        return obj.dict()
+    if isinstance(obj, dict):
+        return obj
+    return jsonable_encoder(obj)
+
+def normalize_analyze_result(res: Any, address: str, chain: str) -> Dict[str, Any]:
+    d = _to_dict(res) or {}
+    md = d.get("metadata") or {}
+    rs = d.get("risk_score") or {}
+
+    def _int(v, default=0):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        "address": d.get("address") or address,
+        "chain": d.get("chain") or chain,
+        "metadata": {
+            "mint": md.get("mint") or md.get("contract") or (address if chain == "solana" else address),
+            "owner": md.get("owner") or "",
+            "token_amount": _int(md.get("token_amount")),
+            "decimals": _int(md.get("decimals")),
+            "supply": _int(md.get("supply")),
+            "name": md.get("name") or md.get("symbol") or "Unknown",
+            "symbol": md.get("symbol") or ((md.get("name") or "")[:10].upper()),
+            "logo_uri": md.get("logo_uri") or "",
+        },
+        "risk_score": {
+            "score": _int(rs.get("score")),
+            "reasons": rs.get("reasons") or [],
+        },
+    }
 @app.get("/analyze", response_model=AnalyzeResult)
 async def analyze(
     address: str = Query(..., alias="wallet", description="Wallet or token/contract address"),
@@ -491,13 +516,14 @@ async def analyze(
         if chain_s == "solana":
             if not is_solana_address(addr_s):
                 raise HTTPException(status_code=422, detail="Invalid Solana mint/address")
-            # Current design: treat as mint analysis; wallet addresses will simply have zero supply path
-            return await sol_analyze_mint(addr_s)
+            raw = await sol_analyze_mint(addr_s)
+            return normalize_analyze_result(raw, addr_s, chain_s)
 
         if chain_s == "ethereum":
             if not is_eth_address(addr_s):
                 raise HTTPException(status_code=422, detail="Invalid Ethereum contract/address")
-            return await eth_analyze_token(addr_s)
+            raw = await eth_analyze_token(addr_s)
+            return normalize_analyze_result(raw, addr_s, chain_s)
 
         raise HTTPException(status_code=400, detail="Unsupported chain. Try chain=solana or chain=ethereum")
     except httpx.HTTPError as e:
@@ -506,6 +532,7 @@ async def analyze(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analyze failure: {str(e)}")
+
 
 # Optional: run with uvicorn if executed directly
 if __name__ == "__main__":
