@@ -31,10 +31,10 @@ class Settings:
 
 settings = Settings()
 
-def validate_settings() -> None:
-    if not settings.ALCHEMY_ETH_HTTP_URL:
+def validate_settings(require_ethereum: bool = False) -> None:
+    """
+    Validate environment settings.
+    If require_ethereum=True, ensure Ethereum settings are present.
+    """
+    if require_ethereum and not settings.ALCHEMY_ETH_HTTP_URL:
         raise RuntimeError("Alchemy ETH URL not configured")
-
-# Validate immediately
-validate_settings()
-

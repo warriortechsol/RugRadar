@@ -32,6 +32,7 @@ type AnalyzeResult = {
     logo_uri?: string | null;
   };
   risk_score: { score: number; reasons: string[] };
+  holders?: { address: string; amount: number; pct: number }[]; // NEW
 };
 
 export default function App() {
@@ -64,7 +65,11 @@ export default function App() {
     setLoading("analyze");
     setTrace(null);
     try {
-      const q = new URLSearchParams({ address: address.trim(), chain });
+      const q = new URLSearchParams(
+        chain === "solana"
+          ? { mint: address.trim(), chain }
+          : { address: address.trim(), chain }
+      );
       const res = await fetch(`${API_BASE}/analyze?` + q.toString());
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail || "Analyze failed");
@@ -78,16 +83,24 @@ export default function App() {
 
   return (
     <div style={{ maxWidth: 1080, margin: "40px auto", padding: "0 16px" }}>
-      <h1 style={{ marginBottom: 16 }}>RugRadar</h1>
+      <h1 style={{ marginBottom: 16 }}>WoR Effort</h1>
+      <p className="subtitle">War on Rugs</p>
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
           <input
             style={{ flex: 1, minWidth: 280 }}
-            placeholder={chain === "solana" ? "Solana wallet or mint" : "Ethereum address or contract"}
+            placeholder={
+              chain === "solana"
+                ? "Solana wallet or mint"
+                : "Ethereum address or contract"
+            }
             value={address}
             onChange={(e) => setAddress(e.target.value)}
           />
-          <select value={chain} onChange={(e) => setChain(e.target.value as any)}>
+          <select
+            value={chain}
+            onChange={(e) => setChain(e.target.value as any)}
+          >
             <option value="solana">Solana</option>
             <option value="ethereum">Ethereum</option>
           </select>
@@ -111,15 +124,34 @@ export default function App() {
               <div key={t.mint} className="card" style={{ padding: 12 }}>
                 <div className="row" style={{ alignItems: "center" }}>
                   {t.logo_uri ? (
-                    <img src={t.logo_uri} alt="" width={24} height={24} style={{ borderRadius: 6, marginRight: 8 }} />
+                    <img
+                      src={t.logo_uri}
+                      alt=""
+                      width={24}
+                      height={24}
+                      style={{ borderRadius: 6, marginRight: 8 }}
+                    />
                   ) : (
-                    <div style={{ width: 24, height: 24, background: "#1b2634", borderRadius: 6, marginRight: 8 }} />
+                    <div
+                      style={{
+                        width: 24,
+                        height: 24,
+                        background: "#1b2634",
+                        borderRadius: 6,
+                        marginRight: 8,
+                      }}
+                    />
                   )}
                   <strong>{t.symbol || "Unknown"}</strong>
-                  <span style={{ opacity: 0.7, marginLeft: 6 }}>{t.name || t.mint}</span>
+                  <span style={{ opacity: 0.7, marginLeft: 6 }}>
+                    {t.name || t.mint}
+                  </span>
                 </div>
                 <div style={{ marginTop: 8, opacity: 0.85 }}>
-                  {t.ui_amount.toLocaleString(undefined, { maximumFractionDigits: 6 })} ({t.amount} raw)
+                  {t.ui_amount.toLocaleString(undefined, {
+                    maximumFractionDigits: 6,
+                  })}{" "}
+                  ({t.amount} raw)
                 </div>
               </div>
             ))}
@@ -140,7 +172,14 @@ export default function App() {
                 style={{ borderRadius: 8 }}
               />
             ) : (
-              <div style={{ width: 28, height: 28, background: "#1b2634", borderRadius: 8 }} />
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  background: "#1b2634",
+                  borderRadius: 8,
+                }}
+              />
             )}
             <div>
               <div>
@@ -148,7 +187,8 @@ export default function App() {
                 {analyze.metadata.name || analyze.metadata.mint}
               </div>
               <div style={{ opacity: 0.7, fontSize: 12 }}>
-                Supply: {analyze.metadata.supply ?? "—"} • Decimals: {analyze.metadata.decimals ?? "—"}
+                Supply: {analyze.metadata.supply ?? "—"} • Decimals:{" "}
+                {analyze.metadata.decimals ?? "—"}
               </div>
             </div>
           </div>
@@ -156,15 +196,44 @@ export default function App() {
             <strong>Risk score:</strong> {analyze.risk_score.score} / 100
             <ul style={{ marginTop: 8 }}>
               {analyze.risk_score.reasons.length ? (
-                analyze.risk_score.reasons.map((r, i) => <li key={i}>{r}</li>)
+                analyze.risk_score.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))
               ) : (
                 <li>No issues detected in current heuristic</li>
               )}
             </ul>
           </div>
+
+          {analyze.holders && analyze.holders.length > 0 && (
+            <div className="card" style={{ marginTop: 12 }}>
+              <strong>Top Holders:</strong>
+              <table style={{ width: "100%", marginTop: 8, fontSize: 14 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>Address</th>
+                    <th style={{ textAlign: "right" }}>Amount</th>
+                    <th style={{ textAlign: "right" }}>% of Supply</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analyze.holders.map((h, i) => (
+                    <tr key={i}>
+                      <td style={{ fontFamily: "monospace" }}>{h.address}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {h.amount.toLocaleString()}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {h.pct.toFixed(4)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
-
