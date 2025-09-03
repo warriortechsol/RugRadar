@@ -47,6 +47,22 @@ redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 PLACEHOLDER_LOGO = os.getenv("PLACEHOLDER_LOGO", "https://yourcdn.example.com/placeholder.png").strip()
 
 # -----------------------------------------------------------------------------
+# App
+# -----------------------------------------------------------------------------
+app = FastAPI(title="RugRadar API")
+
+# -----------------------------------------------------------------------------
+# CORS
+# -----------------------------------------------------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ALLOW_ORIGINS if CORS_ALLOW_ORIGINS != ["*"] else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# -----------------------------------------------------------------------------
 # Models
 # -----------------------------------------------------------------------------
 class Metadata(BaseModel):
@@ -69,9 +85,7 @@ class AnalyzeResult(BaseModel):
     metadata: Metadata
     risk_score: RiskScore
     events: Optional[List[Dict[str, Any]]] = None
-    holders: List[Dict[str, Any]] = []  # <-- always a list, defaults to empty
-
-
+    holders: List[Dict[str, Any]] = []  # always a list, defaults to empty
 
 class TokenHolding(BaseModel):
     mint: str
@@ -89,20 +103,6 @@ class TraceResult(BaseModel):
 
 class ChainsResponse(BaseModel):
     available: List[str]
-
-# -----------------------------------------------------------------------------
-# App
-# -----------------------------------------------------------------------------
-app = FastAPI(title="RugRadar API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ALLOW_ORIGINS if CORS_ALLOW_ORIGINS != ["*"] else ["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------

@@ -433,6 +433,7 @@ async def sol_analyze_mint(mint: str) -> AnalyzeResult:
         events=events or None,
         holders=holder_breakdown  # always a list, even if empty
     )
+
 # -----------------------------------------------------------------------------
 # Redis-backed supply snapshot helpers
 # -----------------------------------------------------------------------------
