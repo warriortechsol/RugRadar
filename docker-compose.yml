@@ -1,8 +1,8 @@
 services:
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./backend  # Set context to the backend subdirectory
+      dockerfile: Dockerfile
     image: rugradar-backend
     container_name: rugradar-backend
     env_file:
@@ -24,8 +24,8 @@ services:
 
   frontend:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
+      context: ./frontend  # Set context to the frontend subdirectory
+      dockerfile: Dockerfile
     image: rugradar-frontend
     container_name: rugradar-frontend
     env_file:
